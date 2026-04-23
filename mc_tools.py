@@ -11,6 +11,7 @@ from typing import Callable, Dict, Tuple, Optional, Sequence, List, Union, Any
 from dataclasses import dataclass
 import math
 import matplotlib.pyplot as plt
+import warnings
 
 # --- Types & results ---------------------------------------------------------
 ParamSpec = Union[Tuple[float, float], Dict[str, Any]]
@@ -191,34 +192,66 @@ def mc_uncertainty(
 ) -> MCResult:
     """
     Monte Carlo error propagation for y = f(**params), with per-parameter
-    normal or lognormal uncertainties (independent by default).
+    normal / lognormal / uniform / asymmetric-normal uncertainties.
+
+    This version evaluates f one sample at a time, which is safer for
+    functions that call scalar solvers such as scipy.optimize.root.
     """
     rng = np.random.default_rng(seed)
-    
+
     if fixed_kwargs is None:
         fixed_kwargs = {}
 
+    # Resolve distributions and draw samples
     resolved = {k: _resolve_spec(v) for k, v in params.items()}
     draws = {k: _sample_param(rng, resolved[k], n) for k in resolved.keys()}
 
-    # Evaluate f; try vectorized first, then fallback
-    try:
-        y = f(**draws, **fixed_kwargs)
-        y = np.asarray(y)
-        if y.shape == ():
-            raise TypeError
-        if y.shape[0] != n:
-            raise ValueError("Vectorized function returned wrong shape.")
-    except Exception:
-        fv = np.vectorize(lambda **kw: f(**kw, **fixed_kwargs))
-        y = fv(**draws).astype(float)
+    # Evaluate sample-by-sample
+    y = np.empty(n, dtype=np.complex128)
+    for i in range(n):
+        kwargs_i = {k: v[i] for k, v in draws.items()}
+        y[i] = f(**kwargs_i, **fixed_kwargs)
+
+    # Warn if any complex values were produced
+    imag = np.abs(np.imag(y))
+    n_complex = int(np.sum(imag > 0))
+    if n_complex > 0:
+        warnings.warn(
+            f"mc_uncertainty: {n_complex} samples returned complex values; "
+            f"their imaginary parts will be discarded."
+        )
+
+    # Keep only the real part for downstream statistics
+    y = np.real(y)
+
+    # Remove invalid values
+    mask = np.isfinite(y)
+    n_valid = int(np.sum(mask))
+    if n_valid < n:
+        warnings.warn(
+            f"mc_uncertainty: {n - n_valid} invalid samples were discarded; "
+            f"effective sample size = {n_valid}."
+        )
+
+    y = y[mask]
+    draws = {k: v[mask] for k, v in draws.items()}
+
+    if len(y) == 0:
+        raise RuntimeError("All Monte Carlo samples were invalid.")
 
     mean = float(np.mean(y))
     median = float(np.median(y))
     std = float(np.std(y, ddof=1))
     lo, hi = np.quantile(y, [(1 - ci_level) / 2, 1 - (1 - ci_level) / 2])
 
-    return MCResult(mean=mean, std=std, ci=(float(lo), float(hi)), samples=y, param_samples=draws, median=median)
+    return MCResult(
+        mean=mean,
+        std=std,
+        ci=(float(lo), float(hi)),
+        samples=y,
+        param_samples=draws,
+        median=median,
+    )
 
 # --- Plotting utilities ------------------------------------------------------
 def plot_mc_diagnostics(
