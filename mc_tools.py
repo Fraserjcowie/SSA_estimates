@@ -187,26 +187,30 @@ def mc_uncertainty(
     n: int = 100_000,
     seed: Optional[int] = None,
     ci_level: float = 0.68,
+    fixed_kwargs: Optional[Dict[str, Any]] = None,
 ) -> MCResult:
     """
     Monte Carlo error propagation for y = f(**params), with per-parameter
     normal or lognormal uncertainties (independent by default).
     """
     rng = np.random.default_rng(seed)
+    
+    if fixed_kwargs is None:
+        fixed_kwargs = {}
 
     resolved = {k: _resolve_spec(v) for k, v in params.items()}
     draws = {k: _sample_param(rng, resolved[k], n) for k in resolved.keys()}
 
     # Evaluate f; try vectorized first, then fallback
     try:
-        y = f(**draws)
+        y = f(**draws, **fixed_kwargs)
         y = np.asarray(y)
         if y.shape == ():
             raise TypeError
         if y.shape[0] != n:
             raise ValueError("Vectorized function returned wrong shape.")
     except Exception:
-        fv = np.vectorize(lambda **kw: f(**kw))
+        fv = np.vectorize(lambda **kw: f(**kw, **fixed_kwargs))
         y = fv(**draws).astype(float)
 
     mean = float(np.mean(y))
