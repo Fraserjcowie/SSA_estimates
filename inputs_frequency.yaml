@@ -1,0 +1,114 @@
+# ============================================================
+# Parameter configuration for Monte Carlo run of SSA estimates
+# ============================================================
+#
+# HOW TO USE:
+# - Each parameter name MUST match the function argument exactly
+# - Each parameter defines a probability distribution
+# - Edit values, uncertainties, or distribution types as needed
+#
+# SUPPORTED DISTRIBUTIONS:
+#
+# 1) normal:
+#    required: mean, sigma
+#    example:
+#      dist: normal
+#      mean: 10.0
+#      sigma: 1.0
+#
+# 2) lognormal:
+#    defined in linear space
+#    required: mean
+#    optional: sigma OR sigma_frac
+#    example:
+#      dist: lognormal
+#      mean: 100.0
+#      sigma_frac: 0.2
+#
+# 3) uniform:
+#    required: low, high
+#    optional: space ('linear' or 'log')
+#    example:
+#      dist: uniform
+#      low: 1.0
+#      high: 10.0
+#
+# 4) asymm_normal (asymmetric normal):
+#    required: mean, sigma_up, sigma_down
+#    example:
+#      dist: asymm_normal
+#      mean: 10.0
+#      sigma_up: 2.0
+#      sigma_down: 1.0
+#
+# OPTIONAL FIELDS:
+#   bounds: [min, max]   # use null for no limit
+#   strict_positive: true   # forces values > 0
+#   sigma_frac: fractional uncertainty (sigma = mean * sigma_frac)
+#
+# ============================================================
+
+flux_dens_peak_mJy:
+  dist: normal
+  mean: 839.4
+  sigma: 0.3
+
+nu_obs_Hz:
+  dist: normal
+  mean: 1.3e9
+  sigma_frac: 0.01
+  strict_positive: true
+
+dist_kpc:
+  dist: uniform
+  low: 1.5
+  high: 4.3
+  bounds: [0.0, null]
+
+alpha_thin:
+  dist: uniform
+  high: -0.5
+  low: -1.0
+
+nu_min:
+  dist: uniform
+  high: 1.0e8
+  low: 1.0e5
+  strict_positive: true
+
+nu_max:
+  dist: uniform
+  space: log
+  high: 1.0e14
+  low: 1.0e11
+  strict_positive: true
+
+bulk_gamma:
+  dist: normal
+  mean: 1.0
+  sigma_frac: 0.0
+  bounds: [1.0, null]
+
+cos_inclination:
+  dist: uniform
+  low: -1
+  high: 1
+
+redshift:
+  dist: normal
+  mean: 0.0
+  sigma: 0.0
+  bounds: [0.0, null]
+
+proton_energy_ratio:
+  dist: normal
+  mean: 0.0
+  sigma: 0.0
+  strict_positive: true
+
+equip_deviation:
+  dist: lognormal
+  space: log
+  mean: 0.0
+  sigma: 0.5
+  strict_positive: true
