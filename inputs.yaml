@@ -48,44 +48,39 @@
 #
 # ============================================================
 
-#alpha_thin:
-#  dist: uniform
-#  high: -0.25
-#  low: -1.5
-
-
 flux_dens_peak_mJy:
   dist: normal
-  mean: 10.0
-  sigma: 0.0
+  mean: 839.4
+  sigma: 0.3
 
 nu_obs_Hz:
   dist: normal
-  mean: 1.0e9
-  sigma_frac: 0.0
+  mean: 1.3e9
+  sigma_frac: 0.01
   strict_positive: true
 
 dist_kpc:
-  dist: normal
-  mean: 1.0
-  sigma_frac: 0.0
+  dist: uniform
+  low: 1.5
+  high: 4.3
   bounds: [0.0, null]
 
 alpha_thin:
-  dist: normal
-  sigma: 0.0
-  mean: -0.5
+  dist: uniform
+  high: -0.5
+  low: -1.0
 
 gamma_min:
-  dist: normal
-  mean: 10.0
-  sigma_frac: 0.0
+  dist: uniform
+  high: 1.0e2
+  low: 3
   strict_positive: true
 
 gamma_max:
-  dist: normal
-  mean: 1.0e2
-  sigma_frac: 0.0
+  dist: uniform
+  space: log
+  high: 1.0e10
+  low: 1.0e3
   strict_positive: true
 
 bulk_gamma:
@@ -115,5 +110,5 @@ equip_deviation:
   dist: lognormal
   space: log
   mean: 0.0
-  sigma: 0.0
+  sigma: 0.5
   strict_positive: true
