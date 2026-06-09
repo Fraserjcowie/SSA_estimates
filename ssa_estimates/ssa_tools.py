@@ -7,14 +7,9 @@ Created on Tue Apr 21 13:48:48 2026
 """
 
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy.optimize import root
 import scipy.special as special
-import yaml
-import warnings
 from scipy.special import expit  # numerically stable sigmoid
-
-from mc_tools import mc_uncertainty, plot_mc_diagnostics
 
 
 ######################## Constants
@@ -515,26 +510,6 @@ def TB_frequency_form(flux_dens_peak_mJy, nu_obs_Hz, dist_kpc, alpha_thin, nu_mi
     else:
         return TB
 
-########################
-    
-
-with open("/Users/cowie/Documents/DPhil/ssa_inhomogeneous/SSA_estimates/inputs.yaml") as f:
-    params = yaml.safe_load(f)
-
-
-
-res = mc_uncertainty(E_energy_form, params, n=1000, seed=100, ci_level=0.68, fixed_kwargs={"log10": True})
-plot_mc_diagnostics(res, params)
-
-
-res = mc_uncertainty(gamma_min_constraint, params, n=1000, fixed_kwargs={"log10": False})
-plot_mc_diagnostics(res, params)
-
-
-res = mc_uncertainty(ne_energy_form, params, n=1000, fixed_kwargs={"log10": True})
-plot_mc_diagnostics(res, params)
-
-
 ###### p = 2.0 case testing
 
 # alpha_thin = -0.5
@@ -628,5 +603,4 @@ plot_mc_diagnostics(res, params)
 # print(np.log10(nu1))
 
 # print(np.log10(np.abs(nu1 - c1*B*(gamma_min*electron_mass_cgs*c_cgs**2)**2)))
-
 

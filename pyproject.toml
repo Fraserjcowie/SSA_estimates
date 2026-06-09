@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ssa-estimates"
+version = "0.1.0"
+description = "Command-line tools for synchrotron self-absorption estimates"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [
+  { name = "cowie" }
+]
+dependencies = [
+  "matplotlib",
+  "numpy",
+  "PyYAML",
+  "scipy",
+]
+
+[project.scripts]
+ssa-estimates = "ssa_estimates.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ssa_estimates*"]

@@ -10,7 +10,6 @@ import numpy as np
 from typing import Callable, Dict, Tuple, Optional, Sequence, List, Union, Any
 from dataclasses import dataclass
 import math
-import matplotlib.pyplot as plt
 import warnings
 
 # --- Types & results ---------------------------------------------------------
@@ -260,6 +259,8 @@ def plot_mc_diagnostics(
     ci_level: float = 0.68,
     bins: int = 60,
     max_cols: int = 3,
+    save_path: Optional[str] = None,
+    show: bool = False,
 ):
     """
     Make quick-look plots:
@@ -267,7 +268,12 @@ def plot_mc_diagnostics(
         - Normal parameters: linear histogram
         - Lognormal parameters: histogram in log10 space
       • A separate histogram for the posterior result.
+
+    Set ``save_path`` to write the posterior plot to disk. Set ``show=True``
+    to display plots interactively.
     """
+    import matplotlib.pyplot as plt
+
     # Resolve again to know which parameters are lognormal
     from copy import deepcopy
     from types import SimpleNamespace
@@ -347,7 +353,10 @@ def plot_mc_diagnostics(
     
     fig_post.tight_layout()
     
-    plt.savefig('/Users/cowie/Downloads/mc_13.pdf', dpi=300, bbox_inches='tight')
-    plt.show() #Had to add this line in for some reason
+    if save_path is not None:
+        fig_post.savefig(save_path, dpi=300, bbox_inches="tight")
+
+    if show:
+        plt.show()
 
     return {"params": fig_params, "posterior": fig_post}
