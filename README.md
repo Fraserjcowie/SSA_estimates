@@ -1,7 +1,7 @@
 # SSA Estimates
 
-`ssa-estimates` calculates synchrotron self-absorption quantities from a YAML
-file of input parameter distributions.
+`ssa-estimates` calculates physicsal quantities from observations of the synchrotron self-absorption peak. The key observables are the frequency and amplitude of the spectral peak. The full required inputs are given through a YAML
+file, where uncertainties can be included by specifying input parameter distributions to draw values from.
 
 The package currently supports two calculation forms:
 
