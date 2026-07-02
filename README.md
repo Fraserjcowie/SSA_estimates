@@ -39,8 +39,34 @@ ssa-estimates run inputs.yaml \
   --quantity energy \
   --samples 10000 \
   --seed 100 \
-  --output-format json \
   --output results.json
+```
+
+The command always prints a table to the terminal. When results are written to
+a file with `--output` or `--run-name`, the default file format is JSON.
+
+Save a complete named run:
+
+```bash
+ssa-estimates run inputs.yaml \
+  --run-name source-a-first-pass \
+  --quantity energy radius \
+  --samples 10000 \
+  --seed 100
+```
+
+This creates:
+
+```text
+runs/
+  source-a-first-pass/
+    input.yaml
+    results.json
+    run_metadata.json
+    plots/
+      priors.pdf
+      energy.pdf
+      radius.pdf
 ```
 
 Run the frequency-form example:
@@ -118,7 +144,33 @@ To save posterior diagnostic plots:
 ssa-estimates run inputs.yaml --quantity energy --plot-dir plots
 ```
 
-Each requested quantity gets a PDF in the plot directory.
+Each requested quantity gets a posterior PDF in the plot directory. The command
+also writes one `priors.pdf` file containing all prior parameter distributions
+sampled for the run.
+
+## Named Runs
+
+Use `--run-name` to save a run as one folder under `runs/`:
+
+```bash
+ssa-estimates run inputs.yaml --run-name source-a
+```
+
+The run folder contains:
+
+- `input.yaml`: an exact copy of the input file used for the run.
+- `results.json`: machine-readable result summaries by default.
+- `run_metadata.json`: form, quantities, sample count, seed, confidence level,
+  output scale, package version, command, and output paths.
+- `plots/`: one `priors.pdf` plus one posterior PDF per requested quantity.
+
+Useful options:
+
+- `--runs-dir PATH`: choose a different parent directory for named runs.
+- `--overwrite`: replace an existing run folder with the same name.
+- `--no-plots`: save inputs/results/metadata without generating PDFs.
+- `--output-format table`: write saved result files as a table instead of JSON.
+- `--output PATH`: write an additional result file outside the run folder.
 
 ## Development
 

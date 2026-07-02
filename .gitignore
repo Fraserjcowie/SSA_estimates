@@ -7,4 +7,5 @@ build/
 dist/
 *.egg-info/
 plots/
+runs/
 results.json

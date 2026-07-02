@@ -260,6 +260,7 @@ def plot_mc_diagnostics(
     bins: int = 60,
     max_cols: int = 3,
     save_path: Optional[str] = None,
+    save_priors_path: Optional[str] = None,
     show: bool = False,
 ):
     """
@@ -269,15 +270,12 @@ def plot_mc_diagnostics(
         - Lognormal parameters: histogram in log10 space
       • A separate histogram for the posterior result.
 
-    Set ``save_path`` to write the posterior plot to disk. Set ``show=True``
-    to display plots interactively.
+    Set ``save_path`` to write the posterior plot to disk. Set
+    ``save_priors_path`` to write the prior-parameter grid to disk. Set
+    ``show=True`` to display plots interactively.
     """
     import matplotlib.pyplot as plt
 
-    # Resolve again to know which parameters are lognormal
-    from copy import deepcopy
-    from types import SimpleNamespace
-    
     # reuse your _resolve_spec
     resolved = {k: _resolve_spec(v) for k, v in params.items()}
     names = list(result.param_samples.keys())
@@ -319,6 +317,9 @@ def plot_mc_diagnostics(
     #     axes[r, c].axis("off")
 
     fig_params.tight_layout()
+
+    if save_priors_path is not None:
+        fig_params.savefig(save_priors_path, dpi=300, bbox_inches="tight")
     
     y = result.samples
     lo2, hi2 = np.quantile(y, [(1 - 0.95) / 2, 1 - (1 - 0.95) / 2])
@@ -339,12 +340,23 @@ def plot_mc_diagnostics(
     axp.set_ylabel("Counts")
     #axp.set_xlim(40,50)
     axp.legend()
-    axp.text(0.02, 0.95, f"{int(ci_level*100)}% CI: [{lo:.4g}, {hi:.4g}]",
-             transform=axp.transAxes, va="top")
-    axp.text(0.02, 0.88, f"{int(0.95*100)}% CI: [{lo2:.4g}, {hi2:.4g}]",
-             transform=axp.transAxes, va="top")
-    axp.text(0.02, 0.81, f"{(0.997*100):.3g}% CI: [{lo3:3.4g}, {hi3:.4g}]",
-             transform=axp.transAxes, va="top")
+    summary_text = "\n".join(
+        [
+            f"Mean: {result.mean:.4g}",
+            f"Median: {result.median:.4g}",
+            f"{int(ci_level*100)}% CI: [{lo:.4g}, {hi:.4g}]",
+            f"{int(0.95*100)}% CI: [{lo2:.4g}, {hi2:.4g}]",
+            f"{(0.997*100):.3g}% CI: [{lo3:.4g}, {hi3:.4g}]",
+        ]
+    )
+    axp.text(
+        0.02,
+        0.95,
+        summary_text,
+        transform=axp.transAxes,
+        va="top",
+        bbox={"boxstyle": "round,pad=0.35", "facecolor": "white", "alpha": 0.8},
+    )
 
 
     # mu, sigma, D, p = fit_normal_and_gof(res.samples)

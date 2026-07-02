@@ -5,14 +5,17 @@ from __future__ import annotations
 import argparse
 import inspect
 import json
+import shutil
 import sys
+import textwrap
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence
 
 import yaml
 
-from . import ssa_tools
+from . import __version__, ssa_tools
 from .mc_tools import mc_uncertainty, plot_mc_diagnostics
 
 
@@ -22,6 +25,16 @@ class Quantity:
     label: str
     energy_function: Optional[Callable[..., float]]
     frequency_function: Optional[Callable[..., float]]
+
+
+@dataclass(frozen=True)
+class RunBundle:
+    name: str
+    directory: Path
+    input_path: Path
+    metadata_path: Path
+    results_path: Path
+    plots_dir: Optional[Path]
 
 
 QUANTITIES: Dict[str, Quantity] = {
@@ -76,6 +89,66 @@ QUANTITIES: Dict[str, Quantity] = {
 }
 
 
+class HelpFormatter(
+    argparse.ArgumentDefaultsHelpFormatter,
+    argparse.RawDescriptionHelpFormatter,
+):
+    """Show defaults while preserving manually formatted help sections."""
+
+
+def quantity_choices_text() -> str:
+    return ", ".join(["all"] + sorted(QUANTITIES.keys()))
+
+
+def full_help_epilog() -> str:
+    return textwrap.dedent(
+        f"""
+        Run command options:
+          input_yaml
+              YAML file containing parameter distributions.
+          --form {{auto,energy,frequency}}
+              Calculation form. Use auto to infer from YAML keys.
+          --quantity, -q QUANTITY [QUANTITY ...]
+              Quantities to calculate. Choices: {quantity_choices_text()}.
+          --samples, -n SAMPLES
+              Number of Monte Carlo samples per quantity.
+          --seed SEED
+              Random seed for reproducible sampling.
+          --ci-level CI_LEVEL
+              Central confidence interval level.
+          --linear
+              Return linear values instead of log10 values.
+          --output-format {{table,json}}
+              File results format. Terminal output is always a table.
+          --output, -o OUTPUT
+              Write an extra results file. Defaults to JSON when a file is written.
+          --run-name RUN_NAME
+              Save a named run under --runs-dir with input.yaml, results, metadata,
+              and plots unless --no-plots is passed.
+          --runs-dir RUNS_DIR
+              Parent directory for named runs.
+          --overwrite
+              Replace an existing named run directory.
+          --plot-dir PLOT_DIR
+              Write posterior PDFs and one priors.pdf to this directory. With
+              --run-name, defaults to RUNS_DIR/RUN_NAME/plots.
+          --no-plots
+              Do not save plots for a named run.
+          --bins BINS
+              Number of histogram bins for diagnostic plots.
+
+        Other commands:
+          list-quantities
+              Show available quantity names and supported forms.
+
+        Examples:
+          ssa-estimates run inputs.yaml
+          ssa-estimates run inputs.yaml --run-name first-pass
+          ssa-estimates run inputs.yaml --quantity energy radius --samples 10000 --run-name source-a
+        """
+    ).strip()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ssa-estimates",
@@ -83,12 +156,15 @@ def build_parser() -> argparse.ArgumentParser:
             "Run synchrotron self-absorption estimates from a YAML parameter "
             "file."
         ),
+        epilog=full_help_epilog(),
+        formatter_class=HelpFormatter,
     )
     subparsers = parser.add_subparsers(dest="command")
 
     run_parser = subparsers.add_parser(
         "run",
         help="run Monte Carlo estimates from a YAML parameter file",
+        formatter_class=HelpFormatter,
     )
     run_parser.add_argument(
         "input_yaml",
@@ -107,7 +183,8 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="+",
         default=["all"],
         choices=["all"] + sorted(QUANTITIES.keys()),
-        help="one or more quantities to calculate",
+        metavar="QUANTITY",
+        help=f"one or more quantities to calculate. Choices: {quantity_choices_text()}",
     )
     run_parser.add_argument(
         "--samples",
@@ -136,19 +213,45 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--output-format",
         choices=("table", "json"),
-        default="table",
-        help="output format",
+        default="json",
+        help="file output format; terminal output is always a table",
     )
     run_parser.add_argument(
         "--output",
         "-o",
         type=Path,
-        help="write results to this file instead of stdout",
+        help="write an extra results file to this path",
+    )
+    run_parser.add_argument(
+        "--run-name",
+        help=(
+            "save a named run under --runs-dir with input.yaml, results, "
+            "metadata, and plots"
+        ),
+    )
+    run_parser.add_argument(
+        "--runs-dir",
+        type=Path,
+        default=Path("runs"),
+        help="parent directory for named run folders",
+    )
+    run_parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="replace an existing named run directory",
     )
     run_parser.add_argument(
         "--plot-dir",
         type=Path,
-        help="write posterior diagnostic PDFs to this directory",
+        help=(
+            "write posterior diagnostic PDFs to this directory; with "
+            "--run-name, defaults to RUNS_DIR/RUN_NAME/plots"
+        ),
+    )
+    run_parser.add_argument(
+        "--no-plots",
+        action="store_true",
+        help="do not save plots for a named run",
     )
     run_parser.add_argument(
         "--bins",
@@ -161,6 +264,7 @@ def build_parser() -> argparse.ArgumentParser:
     list_parser = subparsers.add_parser(
         "list-quantities",
         help="show available quantity names",
+        formatter_class=HelpFormatter,
     )
     list_parser.set_defaults(func=list_quantities_command)
 
@@ -169,7 +273,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    command_argv = list(sys.argv[1:] if argv is None else argv)
+    args = parser.parse_args(command_argv)
+    args.command_argv = command_argv
     if args.command is None:
         parser.print_help()
         return 0
@@ -192,12 +298,20 @@ def list_quantities_command(args: argparse.Namespace) -> int:
 def run_command(args: argparse.Namespace) -> int:
     if args.samples < 1:
         raise SystemExit("--samples must be at least 1")
+    if args.no_plots and args.plot_dir is not None:
+        raise SystemExit("--no-plots cannot be used with --plot-dir")
 
     params, config = load_parameter_file(args.input_yaml)
     form = resolve_form(args.form, params, config)
     quantity_names = resolve_quantity_names(args.quantity, form)
+    run_bundle = prepare_run_bundle(args)
+    plot_dir = resolve_plot_dir(args, run_bundle)
+
+    if run_bundle is not None:
+        copy_input_file(args.input_yaml, run_bundle.input_path)
 
     results = []
+    priors_saved = False
     for quantity_name in quantity_names:
         quantity = QUANTITIES[quantity_name]
         function = get_function_for_form(quantity, form)
@@ -220,24 +334,160 @@ def run_command(args: argparse.Namespace) -> int:
         )
         results.append(record)
 
-        if args.plot_dir is not None:
-            args.plot_dir.mkdir(parents=True, exist_ok=True)
-            plot_path = args.plot_dir / f"{quantity.key}.pdf"
+        if plot_dir is not None:
+            plot_dir.mkdir(parents=True, exist_ok=True)
+            plot_path = plot_dir / f"{quantity.key}.pdf"
+            priors_path = None
+            if not priors_saved:
+                priors_path = plot_dir / "priors.pdf"
+                priors_saved = True
+
             plot_mc_diagnostics(
                 result,
                 function_params,
                 ci_level=args.ci_level,
                 bins=args.bins,
                 save_path=str(plot_path),
+                save_priors_path=str(priors_path) if priors_path is not None else None,
                 show=False,
             )
 
-    text = format_results(results, args.output_format)
-    if args.output is None:
-        print(text)
-    else:
-        args.output.write_text(text + "\n", encoding="utf-8")
+    print(format_results(results, "table"))
+
+    result_paths = result_output_paths(args, run_bundle)
+    if result_paths:
+        file_text = format_results(results, args.output_format)
+        for output_path in result_paths:
+            write_text_file(output_path, file_text)
+
+    if run_bundle is not None:
+        write_run_metadata(
+            run_bundle=run_bundle,
+            args=args,
+            form=form,
+            quantity_names=quantity_names,
+            params=params,
+            result_paths=result_paths,
+            plot_dir=plot_dir,
+        )
     return 0
+
+
+def prepare_run_bundle(args: argparse.Namespace) -> Optional[RunBundle]:
+    if args.run_name is None:
+        return None
+
+    run_name = sanitize_run_name(args.run_name)
+    run_dir = args.runs_dir / run_name
+    if run_dir.exists():
+        if not args.overwrite:
+            raise SystemExit(
+                f"Run directory already exists: {run_dir}. "
+                "Pass --overwrite to replace it."
+            )
+        if not run_dir.is_dir():
+            raise SystemExit(f"Run path exists and is not a directory: {run_dir}")
+        shutil.rmtree(run_dir)
+
+    run_dir.mkdir(parents=True, exist_ok=False)
+    results_name = "results.json" if args.output_format == "json" else "results.txt"
+    plots_dir = None if args.no_plots else (args.plot_dir or run_dir / "plots")
+    return RunBundle(
+        name=run_name,
+        directory=run_dir,
+        input_path=run_dir / "input.yaml",
+        metadata_path=run_dir / "run_metadata.json",
+        results_path=run_dir / results_name,
+        plots_dir=plots_dir,
+    )
+
+
+def sanitize_run_name(run_name: str) -> str:
+    cleaned = run_name.strip().replace("/", "-").replace("\\", "-")
+    cleaned = "".join(
+        char if char.isalnum() or char in ("-", "_", ".") else "-"
+        for char in cleaned
+    ).strip("-._")
+    if not cleaned:
+        raise SystemExit("--run-name must contain at least one letter or number")
+    return cleaned
+
+
+def resolve_plot_dir(
+    args: argparse.Namespace,
+    run_bundle: Optional[RunBundle],
+) -> Optional[Path]:
+    if args.no_plots:
+        return None
+    if args.plot_dir is not None:
+        return args.plot_dir
+    if run_bundle is not None:
+        return run_bundle.plots_dir
+    return None
+
+
+def copy_input_file(source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if source.resolve() == destination.resolve():
+        return
+    shutil.copy2(source, destination)
+
+
+def result_output_paths(
+    args: argparse.Namespace,
+    run_bundle: Optional[RunBundle],
+) -> List[Path]:
+    paths: List[Path] = []
+    if run_bundle is not None:
+        paths.append(run_bundle.results_path)
+    if args.output is not None:
+        paths.append(args.output)
+
+    unique_paths: List[Path] = []
+    seen = set()
+    for path in paths:
+        key = str(path)
+        if key not in seen:
+            unique_paths.append(path)
+            seen.add(key)
+    return unique_paths
+
+
+def write_text_file(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text + "\n", encoding="utf-8")
+
+
+def write_run_metadata(
+    run_bundle: RunBundle,
+    args: argparse.Namespace,
+    form: str,
+    quantity_names: Sequence[str],
+    params: Mapping[str, Any],
+    result_paths: Sequence[Path],
+    plot_dir: Optional[Path],
+) -> None:
+    metadata = {
+        "run_name": run_bundle.name,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "ssa_estimates_version": __version__,
+        "command": ["ssa-estimates"] + list(getattr(args, "command_argv", [])),
+        "input_file": str(args.input_yaml),
+        "saved_input_file": str(run_bundle.input_path),
+        "run_directory": str(run_bundle.directory),
+        "form": form,
+        "quantities": list(quantity_names),
+        "parameter_names": sorted(params.keys()),
+        "samples": args.samples,
+        "seed": args.seed,
+        "ci_level": args.ci_level,
+        "scale": "linear" if args.linear else "log10",
+        "output_format": args.output_format,
+        "result_files": [str(path) for path in result_paths],
+        "plot_dir": str(plot_dir) if plot_dir is not None else None,
+        "plots_enabled": plot_dir is not None,
+    }
+    write_text_file(run_bundle.metadata_path, json.dumps(metadata, indent=2, sort_keys=True))
 
 
 def load_parameter_file(path: Path) -> tuple[Dict[str, Any], Dict[str, Any]]:
