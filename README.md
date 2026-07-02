@@ -172,6 +172,8 @@ Each calculated quantity has a posterior in the plot directory. The command
 also writes one `priors.pdf` file containing all prior parameter distributions
 sampled for the MC run.
 
+To save the Monte Carlo samples generated for each quantity use the `--save-samples` option.
+
 ## Named Runs
 
 Use `--run-name` to save a run as one folder under `runs/`:
