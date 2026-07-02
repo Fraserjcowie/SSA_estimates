@@ -35,6 +35,8 @@ class CliTests(unittest.TestCase):
         self.assertIn("--output-format", help_text)
         self.assertIn("--run-name", help_text)
         self.assertIn("--runs-dir", help_text)
+        self.assertIn("--save-samples", help_text)
+        self.assertIn("--samples-dir", help_text)
         self.assertIn("gamma-min-constraint", help_text)
 
     def test_energy_json_smoke(self):
@@ -115,7 +117,50 @@ class CliTests(unittest.TestCase):
         self.assertEqual(metadata["form"], "energy")
         self.assertEqual(metadata["output_format"], "json")
         self.assertTrue(metadata["plots_enabled"])
+        self.assertFalse(metadata["samples_saved"])
         self.assertEqual(Path(plot_mock.call_args.kwargs["save_priors_path"]).name, "priors.pdf")
+
+    def test_save_samples_writes_dat_files(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        fake_result = SimpleNamespace(
+            mean=1.0,
+            median=1.0,
+            std=0.0,
+            ci=(1.0, 1.0),
+            samples=[1.25, 2.5],
+            param_samples={},
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("ssa_estimates.cli.mc_uncertainty", return_value=fake_result):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    status = main(
+                        [
+                            "run",
+                            str(repo_root / "inputs.yaml"),
+                            "--quantity",
+                            "energy",
+                            "radius",
+                            "--samples",
+                            "2",
+                            "--save-samples",
+                            "--samples-dir",
+                            tmpdir,
+                        ]
+                    )
+
+            energy_samples = Path(tmpdir) / "energy.dat"
+            radius_samples = Path(tmpdir) / "radius.dat"
+
+            self.assertEqual(status, 0)
+            self.assertTrue(energy_samples.exists())
+            self.assertTrue(radius_samples.exists())
+            text = energy_samples.read_text(encoding="utf-8")
+
+        self.assertIn("# quantity: energy", text)
+        self.assertIn("# columns: sample_index value", text)
+        self.assertIn("0 1.25", text)
+        self.assertIn("1 2.5", text)
 
     def test_plot_dir_saves_one_priors_plot(self):
         repo_root = Path(__file__).resolve().parents[1]

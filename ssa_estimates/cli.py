@@ -35,6 +35,7 @@ class RunBundle:
     metadata_path: Path
     results_path: Path
     plots_dir: Optional[Path]
+    samples_dir: Optional[Path]
 
 
 QUANTITIES: Dict[str, Quantity] = {
@@ -134,6 +135,11 @@ def full_help_epilog() -> str:
               --run-name, defaults to RUNS_DIR/RUN_NAME/plots.
           --no-plots
               Do not save plots for a named run.
+          --save-samples
+              Save one .dat file of posterior samples per requested quantity.
+          --samples-dir SAMPLES_DIR
+              Directory for sample .dat files. With --run-name, defaults to
+              RUNS_DIR/RUN_NAME/samples when --save-samples is used.
           --bins BINS
               Number of histogram bins for diagnostic plots.
 
@@ -254,6 +260,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="do not save plots for a named run",
     )
     run_parser.add_argument(
+        "--save-samples",
+        action="store_true",
+        help="save one .dat file of posterior samples per requested quantity",
+    )
+    run_parser.add_argument(
+        "--samples-dir",
+        type=Path,
+        help=(
+            "directory for sample .dat files; with --run-name, defaults to "
+            "RUNS_DIR/RUN_NAME/samples when --save-samples is used"
+        ),
+    )
+    run_parser.add_argument(
         "--bins",
         type=int,
         default=60,
@@ -300,17 +319,21 @@ def run_command(args: argparse.Namespace) -> int:
         raise SystemExit("--samples must be at least 1")
     if args.no_plots and args.plot_dir is not None:
         raise SystemExit("--no-plots cannot be used with --plot-dir")
+    if args.samples_dir is not None and not args.save_samples:
+        raise SystemExit("--samples-dir requires --save-samples")
 
     params, config = load_parameter_file(args.input_yaml)
     form = resolve_form(args.form, params, config)
     quantity_names = resolve_quantity_names(args.quantity, form)
     run_bundle = prepare_run_bundle(args)
     plot_dir = resolve_plot_dir(args, run_bundle)
+    samples_dir = resolve_samples_dir(args, run_bundle)
 
     if run_bundle is not None:
         copy_input_file(args.input_yaml, run_bundle.input_path)
 
     results = []
+    sample_paths: List[Path] = []
     priors_saved = False
     for quantity_name in quantity_names:
         quantity = QUANTITIES[quantity_name]
@@ -333,6 +356,18 @@ def run_command(args: argparse.Namespace) -> int:
             samples=args.samples,
         )
         results.append(record)
+
+        if samples_dir is not None:
+            samples_dir.mkdir(parents=True, exist_ok=True)
+            sample_path = samples_dir / f"{quantity.key}.dat"
+            write_samples_file(
+                path=sample_path,
+                quantity=quantity,
+                form=form,
+                scale="linear" if args.linear else "log10",
+                result=result,
+            )
+            sample_paths.append(sample_path)
 
         if plot_dir is not None:
             plot_dir.mkdir(parents=True, exist_ok=True)
@@ -369,6 +404,8 @@ def run_command(args: argparse.Namespace) -> int:
             params=params,
             result_paths=result_paths,
             plot_dir=plot_dir,
+            sample_paths=sample_paths,
+            samples_dir=samples_dir,
         )
     return 0
 
@@ -392,6 +429,9 @@ def prepare_run_bundle(args: argparse.Namespace) -> Optional[RunBundle]:
     run_dir.mkdir(parents=True, exist_ok=False)
     results_name = "results.json" if args.output_format == "json" else "results.txt"
     plots_dir = None if args.no_plots else (args.plot_dir or run_dir / "plots")
+    samples_dir = None
+    if args.save_samples:
+        samples_dir = args.samples_dir or run_dir / "samples"
     return RunBundle(
         name=run_name,
         directory=run_dir,
@@ -399,6 +439,7 @@ def prepare_run_bundle(args: argparse.Namespace) -> Optional[RunBundle]:
         metadata_path=run_dir / "run_metadata.json",
         results_path=run_dir / results_name,
         plots_dir=plots_dir,
+        samples_dir=samples_dir,
     )
 
 
@@ -424,6 +465,19 @@ def resolve_plot_dir(
     if run_bundle is not None:
         return run_bundle.plots_dir
     return None
+
+
+def resolve_samples_dir(
+    args: argparse.Namespace,
+    run_bundle: Optional[RunBundle],
+) -> Optional[Path]:
+    if not args.save_samples:
+        return None
+    if args.samples_dir is not None:
+        return args.samples_dir
+    if run_bundle is not None:
+        return run_bundle.samples_dir
+    return Path("samples")
 
 
 def copy_input_file(source: Path, destination: Path) -> None:
@@ -458,6 +512,29 @@ def write_text_file(path: Path, text: str) -> None:
     path.write_text(text + "\n", encoding="utf-8")
 
 
+def write_samples_file(
+    path: Path,
+    quantity: Quantity,
+    form: str,
+    scale: str,
+    result: Any,
+) -> None:
+    lines = [
+        "# ssa-estimates Monte Carlo posterior samples",
+        f"# quantity: {quantity.key}",
+        f"# label: {quantity.label}",
+        f"# form: {form}",
+        f"# scale: {scale}",
+        f"# samples_used: {len(result.samples)}",
+        "# columns: sample_index value",
+    ]
+    lines.extend(
+        f"{index} {float(value):.17g}"
+        for index, value in enumerate(result.samples)
+    )
+    write_text_file(path, "\n".join(lines))
+
+
 def write_run_metadata(
     run_bundle: RunBundle,
     args: argparse.Namespace,
@@ -466,6 +543,8 @@ def write_run_metadata(
     params: Mapping[str, Any],
     result_paths: Sequence[Path],
     plot_dir: Optional[Path],
+    sample_paths: Sequence[Path],
+    samples_dir: Optional[Path],
 ) -> None:
     metadata = {
         "run_name": run_bundle.name,
@@ -486,6 +565,9 @@ def write_run_metadata(
         "result_files": [str(path) for path in result_paths],
         "plot_dir": str(plot_dir) if plot_dir is not None else None,
         "plots_enabled": plot_dir is not None,
+        "sample_files": [str(path) for path in sample_paths],
+        "samples_dir": str(samples_dir) if samples_dir is not None else None,
+        "samples_saved": samples_dir is not None,
     }
     write_text_file(run_bundle.metadata_path, json.dumps(metadata, indent=2, sort_keys=True))
 

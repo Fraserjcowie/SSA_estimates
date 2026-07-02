@@ -8,4 +8,5 @@ dist/
 *.egg-info/
 plots/
 runs/
+samples/
 results.json
