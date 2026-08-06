@@ -3,18 +3,22 @@
 If you make use of this software, please cite:
 
 ```bibtex
-@ARTICLE{2026MNRAS.tmp.1046C,
+@ARTICLE{2026MNRAS.550g1113C,
        author = {{Cowie}, F.~J. and {Fender}, R.~P.},
-        title = "{Towards improved synchrotron self absorption energy estimates: accounting for inhomogeneous and non-spherical emitting regions}",
+        title = "{Towards improved synchrotron self-absorption energy estimates: accounting for inhomogeneous and non-spherical emitting regions}",
       journal = {\mnras},
-     keywords = {High Energy Astrophysical Phenomena, Instrumentation and Methods for Astrophysics},
+     keywords = {radiation mechanisms: non-thermal, radio continuum: transients, polarization, methods: analytical, radiative transfer, ISM: jets and outflows, High Energy Astrophysical Phenomena, Instrumentation and Methods for Astrophysics},
          year = 2026,
-        month = jun,
+        month = aug,
+       volume = {550},
+       number = {2},
+          eid = {stag1113},
+        pages = {stag1113},
           doi = {10.1093/mnras/stag1113},
 archivePrefix = {arXiv},
        eprint = {2606.11307},
  primaryClass = {astro-ph.HE},
-       adsurl = {https://ui.adsabs.harvard.edu/abs/2026MNRAS.tmp.1046C},
+       adsurl = {https://ui.adsabs.harvard.edu/abs/2026MNRAS.550g1113C},
       adsnote = {Provided by the SAO/NASA Astrophysics Data System}
 }
 ```
